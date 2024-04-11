@@ -1,10 +1,11 @@
 # utils 
 import json
+import os
+from tqdm import tqdm 
 
 # selenium
 import selenium
 from selenium import webdriver
-import time
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
@@ -12,27 +13,34 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
 # loading config
+print('Loading config.json')
 with open('config.json', 'r') as f:
     config = json.load(f)
 
 chromepath = ChromeDriverManager().install() # Chrome driver install
 
 # setting up Chrome
+print('Setting up Chrome driver')
 service_chrome = Service(executable_path = chromepath) 
 options_chrome = webdriver.ChromeOptions()
-#options_chrome.add_argument('--headless')
+
+# removing unneccesary features to speed up the process
+options_chrome.add_argument('--headless')
 options_chrome.add_argument('--no-sandbox')
 options_chrome.add_argument('--disable-gpu')
 options_chrome.add_argument('--disable-notifications')
 options_chrome.add_argument('--disable-infobars')
 options_chrome.add_argument('--disable-extensions')
 options_chrome.add_argument('--disable-web-security')
-options_chrome.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+# keeping the logs clean
+options_chrome.add_argument('--log-level=3')
 
 # calling Chrome driver
 driver_chrome = webdriver.Chrome(service=service_chrome, options=options_chrome)
 
 # opening the OLX page with selected filters
+print('Opening initial OLX page')
 driver_chrome.get(config['link'])
 
 # accepting cookies
@@ -43,13 +51,15 @@ driver_chrome.find_element('xpath', cookies_xpath).click()
 # getting links to all pages
 elements_page = driver_chrome.find_elements('xpath', '//a[starts-with(@data-testid,"pagination-link-")]')
 links_page=[element.get_attribute('href') for element in elements_page]
+print(f'{len(links_page)} pages found')
 
 # getting links to ads on each page
+print('Scraping links')
 xpath_ad_olx='//a[@class="css-z3gu2d" and starts-with(@href,"/d/oferta")]'
 xpath_ad_otomoto='//a[@class="css-z3gu2d" and starts-with(@href,"https://www.otomoto.pl/")]'
 links_ad=[]
 if config['limit']>0:
-    for page in links_page:
+    for page in tqdm(links_page):
         if links_page.index(page)!=0: # no need to enter the first page since it is already open
             driver_chrome.get(page)
         WebDriverWait(driver_chrome, 30).until(EC.visibility_of_element_located((By.XPATH, xpath_ad_olx)))
@@ -61,7 +71,7 @@ if config['limit']>0:
             if link not in links_ad and len(links_ad)<=config['limit']:
                 links_ad.append(link)
 else:
-    for page in links_page:
+    for page in tqdm(links_page):
         if links_page.index(page)!=0: # no need to enter the first page since it is already open
             driver_chrome.get(page)
         WebDriverWait(driver_chrome, 30).until(EC.visibility_of_element_located((By.XPATH, xpath_ad_olx)))
@@ -76,3 +86,4 @@ else:
 with open("links.txt", 'w') as file:
     for link in links_ad:
         file.write(link + '\n')
+print(f'Results saved at {os.path.abspath("links.txt")}')
