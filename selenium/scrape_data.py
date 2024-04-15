@@ -1,13 +1,18 @@
-#required libraries
+# Required libraries
 import requests
 import re
 from bs4 import BeautifulSoup
 import os 
-import json
+from scrapy.selector import Selector
 import pandas as pd
 
-#Load links form file and check
+# Load links form file and check
 links_file = 'links.csv'
+
+# Function to extract data using Lambda and regex
+def extract_data(data, pattern):
+    result = re.search(pattern, data)
+    return result.group(1) if result else "Not found."
 
 if os.path.exists(links_file):
     links_df = pd.read_csv(links_file)
@@ -15,40 +20,35 @@ if os.path.exists(links_file):
     olx_links = olx_links_df['link'].tolist()
     extracted_data = []
 
-    #Extracting data
+    # Extracting data
     for link in olx_links:
         try:
             response = requests.get(link)
             if response.status_code == 200:
+                # Parse HTML using BeautifulSoup
                 soup = BeautifulSoup(response.text, 'html.parser')
-                #title extraction : 
+
+                # Parse HTML using Scrapy Selelctor
+                selector = Selector(text=response.text)
+
+                # Title extraction (BeautifulSoup) 
                 ad_title_div = soup.find('div',attrs={'data-cy': 'ad_title'})
-                if ad_title_div:
-                    ad_title = ad_title_div.h4.text.strip()
-                    print("Ad Title:", ad_title)
-                else:
-                    print("Ad title not found.")
-                price_div = soup.find('div', attrs={'data-testid': 'ad-price-container'})
-                if price_div:
-                    price = price_div.find('h3').text.strip()
-                else:
-                    price = "Price not found."
-                date_span = soup.find('span',class_='css-fscvqi er34gjf0')
-                if date_span:
-                    posted_date = date_span.find('span', class_='css-19yf5ek').text.strip()
-                else:
-                    posted_date = "Date not found."
-                image_links = []
-                swiper_slides = soup.find_all('div', class_='swiper-slide css-1915wzc')
-                for slide in swiper_slides:
-                    img_tag = slide.find('img', attrs={'data-testid': 'swiper-image'})
-                    if img_tag:
-                        image_links.append(img_tag['src'])
-                location_div = soup.find('p',class_='css-1w88feb er34gjf0')
-                if location_div:
-                    location = location_div.text.strip()
-                else:
-                    location = "Location not found"
+                ad_title = ad_title_div.h4.text.strip() if ad_title_div else "Title not found."
+
+                # Price extraction using Scrapy selector
+                price = selector.css('div[data-testid="ad-price-container"] h3::text').get().strip()if selector.css('div[data-testid="ad-price-container"] h3::text').get() else "Price not found."
+
+                # Date extraction using Lambda function and Regex
+                posted_date = soup.find('span',class_='css-fscvqi er34gjf0').text.strip()
+                posted_date = extract_data(posted_date, r'(\d+\s+\w+\s+\d+)')
+
+                # Extracting image link - scrapy
+                image_links = selector.css('div.swiper-slide img::attr(src)').getall()
+
+                # Location extraction - lambda function
+                location = soup.find('p', class_='css-1w88feb er34gjf0').text.strip() if soup.find('p', class_='css-1w88feb er34gjf0') else "Location not found"
+
+                #Extracting seller name using BS.
                 seller_div = soup.find('h4', class_='css-1lcz6o7 er34gjf0')
                 if seller_div:
                     seller_username = seller_div.text.strip()
