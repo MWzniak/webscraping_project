@@ -42,6 +42,8 @@ options_chrome.add_argument('--disable-web-security')
 
 # keeping the logs clean
 options_chrome.add_argument('--log-level=3')
+options_chrome.add_argument("--ignore-certificate-error")
+options_chrome.add_argument("--ignore-ssl-errors")
 
 # calling Chrome driver
 driver_chrome = webdriver.Chrome(service=service_chrome, options=options_chrome)
@@ -58,51 +60,51 @@ driver_chrome.find_element('xpath', cookies_xpath).click()
 #<span data-testid="total-count">Znaleźliśmy  155 ogłoszeń</span>
 # getting links to all pages
 elements_page = driver_chrome.find_elements('xpath', '//a[starts-with(@data-testid,"pagination-link-")]')
-ad_count=driver_chrome.find_element('xpath', '/html[1]/body[1]/div[1]/div[2]/div[3]/form[1]/div[4]/div[2]/span[1]/span[1]')
-ad_count=re.findall('\s(\d+)\s',ad_count.text)[0]
-links_page=[element.get_attribute('href') for element in elements_page]
-print(f'{ad_count} ads available on {len(links_page)} pages')
+page_count = int(elements_page[3].text)
+ad_count = driver_chrome.find_element('xpath', '/html[1]/body[1]/div[1]/div[2]/div[3]/form[1]/div[4]/div[2]/span[1]/span[1]')
+ad_count = re.findall('\s(\d+)\s',ad_count.text)[0]
+links_page = [config['link'].replace('?', f'?page={i}&', 1) for i in range(1,page_count+1)]
+print(f'{ad_count} ads available on {page_count} pages')
 
 # getting links to ads on each page
-xpath_ad_olx='//a[@class="css-z3gu2d" and starts-with(@href,"/d/oferta")]'
-xpath_ad_otomoto='//a[@class="css-z3gu2d" and starts-with(@href,"https://www.otomoto.pl/")]'
-links_ad=[]
+xpath_ad_olx = '//a[@class="css-z3gu2d" and starts-with(@href,"/d/oferta")]'
+xpath_ad_otomoto = '//a[@class="css-z3gu2d" and starts-with(@href,"https://www.otomoto.pl/")]'
+links_ad = []
 if config['limit']>0:
     for page in tqdm(links_page):
         if links_page.index(page)!=0: # no need to enter the first page since it is already open
             driver_chrome.get(page)
         WebDriverWait(driver_chrome, 30).until(EC.visibility_of_element_located((By.XPATH, xpath_ad_olx)))
-        elements_ad=driver_chrome.find_elements('xpath', xpath_ad_olx)
+        elements_ad = driver_chrome.find_elements('xpath', xpath_ad_olx)
         elements_ad.extend(driver_chrome.find_elements('xpath', xpath_ad_otomoto))
-        elements_ad=[element for element in elements_ad if elements_ad.index(element)%2==0] # each ad is going in twice - removing them early
+        elements_ad = [element for element in elements_ad if elements_ad.index(element)%2==0] # each ad is going in twice - removing them early
         for element in elements_ad: # getting only the specified amount of unique links
-            link=element.get_attribute('href')
+            link = element.get_attribute('href')
             if len(links_ad)<config['limit']:
                 if link not in links_ad:
                     links_ad.append(link)
             else: break
         if len(links_ad)==config['limit']: break
-    print(f'Scraped first ({config["limit"]}) unique links')
+    print(f'Scraped first {config["limit"]} unique links')
             
 else:
     for page in tqdm(links_page):
         if links_page.index(page)!=0: # no need to enter the first page since it is already open
             driver_chrome.get(page)
         WebDriverWait(driver_chrome, 30).until(EC.visibility_of_element_located((By.XPATH, xpath_ad_olx)))
-        elements_ad=driver_chrome.find_elements('xpath', xpath_ad_olx)
+        elements_ad = driver_chrome.find_elements('xpath', xpath_ad_olx)
         elements_ad.extend(driver_chrome.find_elements('xpath', xpath_ad_otomoto))
-        elements_ad=[element for element in elements_ad if elements_ad.index(element)%2==0]
+        elements_ad = [element for element in elements_ad if elements_ad.index(element)%2==0]
         for element in elements_ad:
             links_ad.append(element.get_attribute('href'))
-    links_ad=list(set(links_ad)) # removing duplicates
+    links_ad = list(set(links_ad)) # removing duplicates
 
 # saving links to a .csv file
-link_arr=np.array(links_ad)
-link_type=np.char.startswith(link_arr,'t',13,14) # identifying otomoto links
-link_type=np.where(link_type,1,0)
-df=pd.DataFrame()
-df['link']=link_arr
-df['otomoto']=link_type
-df.to_csv('links.csv',index=False)
+link_arr = np.array(links_ad)
+link_type = np.char.startswith(link_arr,'t',13,14) # identifying otomoto links
+link_type = np.where(link_type,1,0)
+df = pd.DataFrame()
+df['link'] = link_arr
+df['otomoto'] = link_type
+df.to_csv('links.csv', index=False)
 print('Results saved to links.csv')
-
